@@ -808,6 +808,7 @@ function parseMarkers(text) {
     return { t: m[2] != null ? (+m[1]) * 60 + (+m[2]) : +m[1], label: m[3].trim() || '聴きどころ' };
   }).filter(Boolean).sort((a, b) => a.t - b.t);
 }
+const isAudio = f => /^audio\//.test(f.type) || /\.(mp3|m4a|aac|wav|aif|aiff|caf|mp4)$/i.test(f.name);
 const titleFromName = n => n.replace(/\.[^.]+$/, '').replace(/^\s*\d{1,3}[\s._\-]+/, '').trim() || n;
 
 function renderAdmin() {
@@ -838,10 +839,10 @@ function renderAdmin() {
             <div class="ed-tr-top"><span class="no">${i + 1}</span><input data-f="t.title" data-ti="${i}" value="${esc(t.title)}" aria-label="曲名">
               <div class="row-btns"><button class="btn small" data-act="tup" data-ti="${i}" aria-label="上へ">↑</button><button class="btn small" data-act="tdown" data-ti="${i}" aria-label="下へ">↓</button><button class="btn small danger" data-act="tdel" data-ti="${i}">削除</button></div></div>
             <div class="ed-tr-sub"><span>${t.audioKey ? '音源：' + esc(t.fileName || '登録済み') : t.demo ? '音源：デモ音（仮）' : '音源が未登録です'}</span>
-              <label class="btn small">${t.audioKey ? '音源を差し替える' : '音源を選ぶ'}<input class="vh" type="file" accept="audio/*" data-file="track" data-ti="${i}"></label></div>
+              <label class="btn small">${t.audioKey ? '音源を差し替える' : '音源を選ぶ'}<input class="vh" type="file" data-file="track" data-ti="${i}"></label></div>
             <textarea data-f="t.markers" data-ti="${i}" rows="2" placeholder="0:45 サビ&#10;2:10 ラスサビ" aria-label="聴きどころ">${esc(t._mt ?? markersToText(t.markers))}</textarea>
           </li>`).join('')}</ol>
-        <label class="btn primary">曲を追加（音声ファイルを複数選べます）<input class="vh" type="file" accept="audio/*" multiple data-file="addtracks"></label>
+        <label class="btn primary">曲を追加（音声ファイルを複数選べます）<input class="vh" type="file" multiple data-file="addtracks"></label>
       </section>`;
   } else {
     body.innerHTML = `
@@ -893,7 +894,8 @@ function onAdminInput(e) {
 }
 async function onAdminChange(e) {
   const el = e.target; if (!el.dataset.file) { onAdminInput(e); return; }
-  const files = [...el.files]; if (!files.length) return;
+  let files = [...el.files]; if (!files.length) return;
+  if (el.dataset.file === 'track' && !isAudio(files[0])) { toast('音声ファイル（m4a・mp3など）を選んでください'); el.value = ''; return; }
   const a = draftAlbum();
   try {
     if (el.dataset.file === 'jacket') { const k = uid(); await putBlob(k, files[0]); a.jacketKey = k; }
@@ -902,6 +904,9 @@ async function onAdminChange(e) {
       t.audioKey = k; t.demo = null; t.fileName = files[0].name;
     } else {
       toast('取り込んでいます…');
+      const total = files.length;
+      files = files.filter(isAudio);
+      if (files.length < total) toast('音声ファイル以外は取り込みませんでした');
       files.sort((x, y) => x.name.localeCompare(y.name, 'ja', { numeric: true }));
       for (const f of files) { const k = uid(); await putBlob(k, f); a.tracks.push({ id: uid(), title: titleFromName(f.name), audioKey: k, fileName: f.name, demo: null, markers: [] }); }
     }
